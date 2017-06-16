@@ -26,7 +26,7 @@ Vector4d cube[8] = {
 
 Matrix4d sM, tM, rM, rX, rY, rZ, pM, lv;
 double uS = 100, uT = 0, uR = 0; //Uniform transfrormation parameters
-double sV[3] = {uS, uS, uS*10}; //Scalar vector
+double sV[3] = {uS, uS, uS}; //Scalar vector
 double tV[3] = {uT, uT, uT}; //Translation vector
 double rV[3] = {uR*M_PI/180, uR*M_PI/180, 0/*uR*M_PI/180*/}; //Rotation vector
 
@@ -47,8 +47,10 @@ bool quit = 0;
 bool init();
 void drawVertex(const Vector4d& v);
 void drawCube();
+inline int getMax(const Vector4d v[], int nVert, int index);
+inline int getMin(const Vector4d v[], int nVert, int index);
 void drawSphere(Vector4d c, double r);
-void fill(const Vector4d& a, const Vector4d& b, const Vector4d& c);
+void fill(const Vector4d v[], int nVert);
 void eventHandler(SDL_Event& e);
 
 
@@ -99,6 +101,10 @@ int main(){
 	return 0;
 }
 
+
+
+
+
 bool init(){
 	bool success = 1;
 	if(SDL_Init(SDL_INIT_VIDEO)<0){
@@ -142,40 +148,49 @@ void drawCube(){
 	SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 	Vector4d tCube[8];
 	for(int i = 0; i < 8; i++) tCube[i] = lv*cube[i];
-	fill(tCube[0], tCube[1], tCube[2]);
+	/*Vector4d vec[] = {tCube[0], tCube[1], tCube[2], tCube[3]};
+	fill(vec, 4);
+	vec[0]=tCube[0]; vec[1]=tCube[1]; vec[2]=tCube[5]; vec[3]=tCube[4];
+	fill(vec, 4);
+	vec[0]=tCube[1]; vec[1]=tCube[2]; vec[2]=tCube[6]; vec[3]=tCube[5];
+	fill(vec, 4);
+	vec[0]=tCube[0]; vec[1]=tCube[3]; vec[2]=tCube[7]; vec[3]=tCube[4];
+	fill(vec, 4);
+	vec[0]=tCube[4]; vec[1]=tCube[5]; vec[2]=tCube[6]; vec[3]=tCube[7];
+	fill(vec, 4);
+	vec[0]=tCube[3]; vec[1]=tCube[2]; vec[2]=tCube[6]; vec[3]=tCube[7];
+	fill(vec, 4);*/
 	for(int i = 0; i < 8; i++) for(int j = i; j < 8; j++)
 	SDL_RenderDrawLine(renderer, tCube[i][0]+WIDTH/2, tCube[i][1]+HEIGHT/2, tCube[j][0]+WIDTH/2, tCube[j][1]+HEIGHT/2);
 }
 
-void fill(const Vector4d& a, const Vector4d& b, const Vector4d& c){
-	int xL = abs(b[0]-a[0]); //Wall length
-	int yL = abs(c[1]-a[1]); //Wall height
-	int xB = (b[1]-a[1]);
-	int yB = (c[0]-a[0]);
-	int xP[yL], yP[xL];
-	for(int i=0; i<yL; i++) xP[i]=(i+a[1])*yB/yL;
-	for(int i=0; i<xL; i++) yP[i]=(i+a[0])*xB/xL;
-	
+void fill(const Vector4d v[], int nVert){
 	SDL_SetRenderDrawColor(renderer, 0, 0, 0, 128);
-	int tX = (a[0]<b[0]?a[0]:b[0]);
-	int tY = (a[1]<c[1]?a[1]:c[1]);
-	for(int i=0; i<xL; i++) for(int j=0; j<yL; j++)
-	SDL_RenderDrawPoint(renderer, tX+xP[j]+WIDTH/2, tY+i+yP[j]+HEIGHT/2);
+	
+	int xMin = getMin(v, nVert, 0);
+	int xMax = getMax(v, nVert, 0);
+	int yMin = getMin(v, nVert, 1);
+	int yMax = getMax(v, nVert, 1);
+
+	for(int i=yMin; i<yMax; ++i){
+		for(int j=xMin; j<xMax; ++j){
+			bool c = 0;
+			for(int k=0, l=nVert-1; k<nVert; l=k++){
+				if(((v[k][1]>i)!=(v[l][1]>i))&&(j<(v[l][0]-v[k][0])*(i-v[k][1])/(v[l][1]-v[k][1])+v[k][0]))
+				   	c=!c;
+			}
+			if(c) SDL_RenderDrawPoint(renderer, j+WIDTH/2, i+HEIGHT/2);
+		}
+	}	
 }
 
-int oldX = 0, oldY = 0;
-
+double oldX = 0, oldY = 0;
+bool mouseDown = 0;
 void eventHandler(SDL_Event& e){
 	while(SDL_PollEvent(&e)!=0){
 		if(e.type==SDL_QUIT || e.key.keysym.sym==SDLK_ESCAPE) quit = 1;
-		if(e.type==SDL_MOUSEBUTTONDOWN){
-			int x, y;
-			SDL_GetMouseState(&x, &y);
-			rV[0]+=(x-oldX);
-			rV[1]+=(y-oldY);
-			oldX=x;
-			oldY=y;
-		}
+		if(e.type==SDL_MOUSEBUTTONDOWN)	mouseDown = 1;			
+		if(e.type==SDL_MOUSEBUTTONUP) mouseDown=0;
 		if(e.type==SDL_KEYDOWN){
 			double f = 0.05;
 			switch(e.key.keysym.sym){
@@ -198,6 +213,27 @@ void eventHandler(SDL_Event& e){
 					for(int i=0; i<3; i++) sV[i]-=10;
 					break;
 			}
+		}
+		if(e.type==SDL_MOUSEMOTION){
+			int x, y;
+			SDL_GetMouseState(&x, &y);
+			int speed = 4;
+			double scaledX=(double)x*speed/WIDTH, scaledY=(double)y*speed/HEIGHT;
+			rV[1]-=(scaledX-oldX);
+			rV[0]-=(scaledY-oldY);
+			oldX=scaledX;
+			oldY=scaledY;
 		}	
 	}
+}
+
+int getMax(const Vector4d v[], int nVert, int index){ 
+	int max = v[0][index];
+	for (int i = 1; i < nVert; i++) if(v[i][index]>max) max=v[i][index];
+	return max; 
+}
+int getMin(const Vector4d v[], int nVert, int index){ 
+	int min = v[0][index];
+	for (int i = 1; i < nVert; i++) if(v[i][index]<min) min=v[i][index];
+	return min; 
 }
